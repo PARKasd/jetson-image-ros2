@@ -11,7 +11,11 @@ Jetson Orin Nano Dev Kit용 커스텀 rootfs 이미지 빌드 도구입니다.
 | **NoMachine** | 원격 데스크톱 |
 | **Antigravity** | Google의 Gemini 탑재 VS Code |
 | **Claude Code** | Anthropic CLI |
+| **XFCE4** | 경량 데스크톱 환경 |
+| **XRDP** | 원격 데스크톱 (포트 3389) |
+| **Dummy Display** | 헤드리스 원격 데스크톱용 가상 디스플레이 |
 | **Zsh + Oh My Zsh** | zsh-syntax-highlighting, zsh-autosuggestions 플러그인 포함 |
+| **F1TENTH 드라이버 스택** | LiDAR, VESC, 조이패드 드라이버 + udev 규칙 |
 
 ## 사전 요구 사항
 
@@ -75,12 +79,40 @@ sudo ./flash.sh jetson-orin-nano-devkit nvme0n1p1
 - **기본 쉘:** zsh (Oh My Zsh)
 - **시간대:** Asia/Seoul
 
+## 네트워크 설정
+
+| 인터페이스 | 설정 | 값 |
+|---|---|---|
+| **eth0 (Hokuyo)** | IP | `192.168.0.15` |
+| | 서브넷 | `255.255.255.0` |
+| | 게이트웨이 | `192.168.0.10` |
+| **wlan0 (MIRU_5G)** | 보안 | WPA2-PSK |
+| | DHCP | 활성화 |
+
+## F1TENTH 센서 udev 규칙
+
+플래시 후 센서가 자동으로 다음 경로에 매핑됩니다:
+
+| 장치 | 경로 |
+|---|---|
+| Hokuyo LiDAR | `/dev/sensors/hokuyo` |
+| VESC | `/dev/sensors/vesc` |
+| Logitech F710 조이패드 | `/dev/input/joypad-f710` |
+
+## F1TENTH 실행
+
+```bash
+# bringup 실행
+ros2 launch f1tenth_stack bringup_launch.py
+
+# 새 터미널에서 LiDAR 시각화
+rviz2
+# /scan 토픽에서 LaserScan 추가
+```
+
 ## 첫 부팅 후 설정
 
 ```bash
-# rosdep 업데이트
-rosdep update
-
 # Claude Code API 키 설정
 export ANTHROPIC_API_KEY=your_key_here
 ```

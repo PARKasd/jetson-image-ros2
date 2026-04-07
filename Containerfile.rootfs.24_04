@@ -89,7 +89,8 @@ RUN apt install -y \
         python-is-python3 \
         git \
         gpgv1 \
-        fwupd
+        fwupd \
+        network-manager
 
 
 RUN wget -q https://github.com/pythops/tegratop/releases/latest/download/tegratop-linux-arm64 -O /usr/local/bin/tegratop && \
@@ -114,15 +115,28 @@ RUN apt install -y software-properties-common && \
     rosdep init
 
 # Source ROS2 in default shell for all users
-RUN echo "source /opt/ros/kilted/setup.bash" >> /etc/skel/.bashrc
+RUN echo "source /opt/ros/kilted/setup.bash" >> /etc/skel/.bashrc && \
+    echo "source /opt/ros/kilted/setup.zsh" >> /etc/skel/.zshrc
 
-# Terminator terminal emulator
-RUN apt install -y terminator
+# Desktop environment (lightweight, needed for NoMachine/XRDP)
+RUN apt install -y xfce4 xfce4-goodies dbus-x11
+
+# Terminator terminal emulator + set as default for XFCE/Thunar
+RUN apt install -y terminator && \
+    mkdir -p /etc/skel/.config/xfce4 && \
+    echo "TerminalEmulator=terminator" > /etc/skel/.config/xfce4/helpers.rc && \
+    update-alternatives --set x-terminal-emulator /usr/bin/terminator
+
+# ibus-hangul (Korean input) + remap Alt_R to Hangul key
+RUN apt install -y ibus ibus-hangul && \
+    sed -i 's/^	<RALT> = 108;/	\/\/<RALT> = 108;/' /usr/share/X11/xkb/keycodes/evdev && \
+    sed -i 's/^	<HNGL> = 130;/	<HNGL> = 108;/' /usr/share/X11/xkb/keycodes/evdev
 
 # NoMachine remote desktop
 RUN wget -q https://web9001.nomachine.com/download/9.4/Arm/nomachine_9.4.14_1_arm64.deb -O /tmp/nomachine.deb && \
     dpkg -i /tmp/nomachine.deb && \
-    rm /tmp/nomachine.deb
+    rm /tmp/nomachine.deb && \
+    systemctl enable nxserver
 
 # Antigravity (Google's VS Code with Gemini)
 RUN mkdir -p /etc/apt/keyrings && \
@@ -134,6 +148,14 @@ RUN mkdir -p /etc/apt/keyrings && \
 
 # Claude Code
 RUN curl -fsSL https://claude.ai/install.sh | bash
+
+# XRDP remote desktop (port 3389)
+RUN apt install -y xrdp xorgxrdp && \
+    systemctl enable xrdp
+
+# Dummy display (for headless remote desktop)
+RUN apt install -y xserver-xorg-video-dummy
+COPY config/xorg-dummy.conf /etc/X11/xorg.conf.d/10-dummy.conf
 
 # Zsh + Oh My Zsh
 RUN apt install -y zsh
@@ -148,6 +170,11 @@ RUN locale-gen en_US.UTF-8
 # Network configuration
 COPY config/netcfg.yaml /etc/netplan/netcfg.yaml
 
+# udev rules for F1TENTH sensors (Hokuyo LiDAR, VESC, Joypad)
+COPY config/99-hokuyo.rules /etc/udev/rules.d/99-hokuyo.rules
+COPY config/99-vesc.rules /etc/udev/rules.d/99-vesc.rules
+COPY config/99-joypad-f710.rules /etc/udev/rules.d/99-joypad-f710.rules
+
 # Enable services at startuo
 RUN systemctl enable resizerootfs.service && \
     systemctl enable systemd-timesyncd
@@ -157,18 +184,34 @@ RUN systemctl enable resizerootfs.service && \
 # password: 2
 RUN useradd \
         --create-home \
-        -G sudo,video,audio \
+        -G sudo,video,audio,dialout \
         -p $(openssl passwd -6 2) \
-        -s /bin/bash \
+        -s /usr/bin/zsh \
         MIRU
+
+# F1TENTH driver stack workspace
+RUN su - MIRU -c '\
+    source /opt/ros/kilted/setup.bash && \
+    mkdir -p ~/f1tenth_ws/src && \
+    cd ~/f1tenth_ws && \
+    colcon build && \
+    cd src && \
+    git clone https://github.com/f1tenth/f1tenth_system.git && \
+    cd f1tenth_system && \
+    git submodule update --init --force --remote && \
+    cd ~/f1tenth_ws && \
+    rosdep update && \
+    rosdep install --from-paths src -i -y && \
+    colcon build'
 
 # Add /usr/local/cuda/bin to the PATH
 RUN echo "if [ -d \"/usr/local/cuda/bin\" ] ; then" >> /home/MIRU/.profile  && \
     echo "  PATH=\"/usr/local/cuda/bin:\$PATH\"" >> /home/MIRU/.profile  && \
     echo "fi" >> /home/MIRU/.profile
 
-# Source ROS2 Kilted for MIRU user
-RUN echo "source /opt/ros/kilted/setup.bash" >> /home/MIRU/.bashrc
+# Source ROS2 Kilted and F1TENTH workspace for MIRU user
+RUN echo "source /opt/ros/kilted/setup.bash" >> /home/MIRU/.bashrc && \
+    echo "source ~/f1tenth_ws/install/setup.bash 2>/dev/null" >> /home/MIRU/.bashrc
 
 # Install Oh My Zsh + plugins for MIRU user
 RUN su - MIRU -c 'sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended' && \
@@ -176,5 +219,15 @@ RUN su - MIRU -c 'sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/
     git clone https://github.com/zsh-users/zsh-autosuggestions.git /home/MIRU/.oh-my-zsh/custom/plugins/zsh-autosuggestions && \
     sed -i 's/plugins=(git)/plugins=(git zsh-syntax-highlighting zsh-autosuggestions)/' /home/MIRU/.zshrc && \
     echo "source /opt/ros/kilted/setup.zsh" >> /home/MIRU/.zshrc && \
-    chown -R MIRU:MIRU /home/MIRU/.oh-my-zsh /home/MIRU/.zshrc && \
-    chsh -s /usr/bin/zsh MIRU
+    echo "source ~/f1tenth_ws/install/setup.zsh 2>/dev/null" >> /home/MIRU/.zshrc && \
+    chown -R MIRU:MIRU /home/MIRU/.oh-my-zsh /home/MIRU/.zshrc
+
+# Set Terminator as default terminal for MIRU in XFCE
+RUN mkdir -p /home/MIRU/.config/xfce4 && \
+    echo "TerminalEmulator=terminator" > /home/MIRU/.config/xfce4/helpers.rc && \
+    chown -R MIRU:MIRU /home/MIRU/.config
+
+# Set XFCE as default desktop session for NoMachine
+RUN echo "[Desktop]" > /home/MIRU/.dmrc && \
+    echo "Session=xfce" >> /home/MIRU/.dmrc && \
+    chown MIRU:MIRU /home/MIRU/.dmrc
