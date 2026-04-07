@@ -10,6 +10,12 @@ RUN echo "" >> /etc/apt/sources.list.d/ubuntu.sources && \
     echo "Components: main universe restricted multiverse" >> /etc/apt/sources.list.d/ubuntu.sources && \
     echo "Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg" >>/etc/apt/sources.list.d/ubuntu.sources
 
+# Prevent interactive prompts during apt installs
+ENV DEBIAN_FRONTEND=noninteractive
+RUN ln -fs /usr/share/zoneinfo/Asia/Seoul /etc/localtime && \
+    apt update && apt install -y tzdata && \
+    dpkg-reconfigure --frontend noninteractive tzdata
+
 # Nvidia required packages
 RUN apt update && apt install -y \
         libgles2 \
@@ -89,6 +95,49 @@ RUN apt install -y \
 RUN wget -q https://github.com/pythops/tegratop/releases/latest/download/tegratop-linux-arm64 -O /usr/local/bin/tegratop && \
     chmod +x /usr/local/bin/tegratop
 
+# ROS2 Kilted
+RUN apt install -y software-properties-common && \
+    add-apt-repository universe && \
+    apt update && \
+    apt install -y curl && \
+    export ROS_APT_SOURCE_VERSION=$(curl -s https://api.github.com/repos/ros-infrastructure/ros-apt-source/releases/latest | grep -F "tag_name" | awk -F'"' '{print $4}') && \
+    curl -L -o /tmp/ros2-apt-source.deb "https://github.com/ros-infrastructure/ros-apt-source/releases/download/${ROS_APT_SOURCE_VERSION}/ros2-apt-source_${ROS_APT_SOURCE_VERSION}.noble_all.deb" && \
+    dpkg -i /tmp/ros2-apt-source.deb && \
+    rm /tmp/ros2-apt-source.deb && \
+    apt update && \
+    apt install -y \
+        ros-kilted-ros-base \
+        ros-dev-tools \
+        python3-argcomplete \
+        python3-colcon-common-extensions \
+        python3-rosdep && \
+    rosdep init
+
+# Source ROS2 in default shell for all users
+RUN echo "source /opt/ros/kilted/setup.bash" >> /etc/skel/.bashrc
+
+# Terminator terminal emulator
+RUN apt install -y terminator
+
+# NoMachine remote desktop
+RUN wget -q https://web9001.nomachine.com/download/9.4/Arm/nomachine_9.4.14_1_arm64.deb -O /tmp/nomachine.deb && \
+    dpkg -i /tmp/nomachine.deb && \
+    rm /tmp/nomachine.deb
+
+# Antigravity (Google's VS Code with Gemini)
+RUN mkdir -p /etc/apt/keyrings && \
+    curl -fsSL https://us-central1-apt.pkg.dev/doc/repo-signing-key.gpg | \
+    gpg --dearmor --yes -o /etc/apt/keyrings/antigravity-repo-key.gpg && \
+    echo "deb [signed-by=/etc/apt/keyrings/antigravity-repo-key.gpg] https://us-central1-apt.pkg.dev/projects/antigravity-auto-updater-dev/ antigravity-debian main" > /etc/apt/sources.list.d/antigravity.list && \
+    apt update && \
+    apt install -y antigravity
+
+# Claude Code
+RUN curl -fsSL https://claude.ai/install.sh | bash
+
+# Zsh + Oh My Zsh
+RUN apt install -y zsh
+
 # Resize the rootfs
 COPY scripts/resizerootfs.sh /usr/local/bin
 COPY scripts/resizerootfs.service /lib/systemd/system
@@ -117,3 +166,15 @@ RUN useradd \
 RUN echo "if [ -d \"/usr/local/cuda/bin\" ] ; then" >> /home/jetson/.profile  && \
     echo "  PATH=\"/usr/local/cuda/bin:\$PATH\"" >> /home/jetson/.profile  && \
     echo "fi" >> /home/jetson/.profile
+
+# Source ROS2 Kilted for jetson user
+RUN echo "source /opt/ros/kilted/setup.bash" >> /home/jetson/.bashrc
+
+# Install Oh My Zsh + plugins for jetson user
+RUN su - jetson -c 'sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended' && \
+    git clone https://github.com/zsh-users/zsh-syntax-highlighting.git /home/jetson/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting && \
+    git clone https://github.com/zsh-users/zsh-autosuggestions.git /home/jetson/.oh-my-zsh/custom/plugins/zsh-autosuggestions && \
+    sed -i 's/plugins=(git)/plugins=(git zsh-syntax-highlighting zsh-autosuggestions)/' /home/jetson/.zshrc && \
+    echo "source /opt/ros/kilted/setup.zsh" >> /home/jetson/.zshrc && \
+    chown -R jetson:jetson /home/jetson/.oh-my-zsh /home/jetson/.zshrc && \
+    chsh -s /usr/bin/zsh jetson
