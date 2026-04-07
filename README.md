@@ -70,8 +70,8 @@ sudo ./flash.sh jetson-orin-nano-devkit nvme0n1p1
 
 ## 기본 계정
 
-- **사용자명:** `jetson`
-- **비밀번호:** `jetson`
+- **사용자명:** `MIRU`
+- **비밀번호:** `2`
 - **기본 쉘:** zsh (Oh My Zsh)
 - **시간대:** Asia/Seoul
 

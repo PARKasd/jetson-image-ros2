@@ -146,28 +146,28 @@ RUN systemctl enable resizerootfs.service && \
     systemctl enable systemd-timesyncd
 
 # New user
-# username: jetson
-# password: jetson
+# username: MIRU
+# password: 2
 RUN useradd \
         --create-home \
         -G sudo,video,audio \
-        -p $(openssl passwd -6 jetson) \
+        -p $(openssl passwd -6 2) \
         -s /bin/bash \
-        jetson
+        MIRU
 
 # Add /usr/local/cuda/bin to the PATH
-RUN echo "if [ -d \"/usr/local/cuda/bin\" ] ; then" >> /home/jetson/.profile  && \
-    echo "  PATH=\"/usr/local/cuda/bin:\$PATH\"" >> /home/jetson/.profile  && \
-    echo "fi" >> /home/jetson/.profile
+RUN echo "if [ -d \"/usr/local/cuda/bin\" ] ; then" >> /home/MIRU/.profile  && \
+    echo "  PATH=\"/usr/local/cuda/bin:\$PATH\"" >> /home/MIRU/.profile  && \
+    echo "fi" >> /home/MIRU/.profile
 
-# Source ROS2 Humble for jetson user
-RUN echo "source /opt/ros/humble/setup.bash" >> /home/jetson/.bashrc
+# Source ROS2 Humble for MIRU user
+RUN echo "source /opt/ros/humble/setup.bash" >> /home/MIRU/.bashrc
 
-# Install Oh My Zsh + plugins for jetson user
-RUN su - jetson -c 'sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended' && \
-    git clone https://github.com/zsh-users/zsh-syntax-highlighting.git /home/jetson/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting && \
-    git clone https://github.com/zsh-users/zsh-autosuggestions.git /home/jetson/.oh-my-zsh/custom/plugins/zsh-autosuggestions && \
-    sed -i 's/plugins=(git)/plugins=(git zsh-syntax-highlighting zsh-autosuggestions)/' /home/jetson/.zshrc && \
-    echo "source /opt/ros/humble/setup.zsh" >> /home/jetson/.zshrc && \
-    chown -R jetson:jetson /home/jetson/.oh-my-zsh /home/jetson/.zshrc && \
-    chsh -s /usr/bin/zsh jetson
+# Install Oh My Zsh + plugins for MIRU user
+RUN su - MIRU -c 'sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended' && \
+    git clone https://github.com/zsh-users/zsh-syntax-highlighting.git /home/MIRU/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting && \
+    git clone https://github.com/zsh-users/zsh-autosuggestions.git /home/MIRU/.oh-my-zsh/custom/plugins/zsh-autosuggestions && \
+    sed -i 's/plugins=(git)/plugins=(git zsh-syntax-highlighting zsh-autosuggestions)/' /home/MIRU/.zshrc && \
+    echo "source /opt/ros/humble/setup.zsh" >> /home/MIRU/.zshrc && \
+    chown -R MIRU:MIRU /home/MIRU/.oh-my-zsh /home/MIRU/.zshrc && \
+    chsh -s /usr/bin/zsh MIRU
