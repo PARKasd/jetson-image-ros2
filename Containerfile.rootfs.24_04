@@ -190,7 +190,7 @@ RUN useradd \
         MIRU
 
 # F1TENTH driver stack workspace
-RUN su - MIRU -c '\
+RUN su - MIRU -s /bin/bash -c '\
     source /opt/ros/kilted/setup.bash && \
     mkdir -p ~/f1tenth_ws/src && \
     cd ~/f1tenth_ws && \

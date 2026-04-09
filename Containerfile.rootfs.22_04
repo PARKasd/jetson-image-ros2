@@ -2,8 +2,9 @@ FROM ubuntu:jammy
 
 LABEL org.opencontainers.image.authors="Badr @pythops"
 
-# Add focal main repo
-RUN echo "deb http://ports.ubuntu.com/ubuntu-ports/ focal main" >> /etc/apt/sources.list  && \
+# Use KAIST mirror for faster apt downloads in Korea
+RUN sed -i 's|http://ports.ubuntu.com/ubuntu-ports|http://ftp.kaist.ac.kr/ubuntu-ports|g' /etc/apt/sources.list && \
+    echo "deb http://ftp.kaist.ac.kr/ubuntu-ports/ focal main" >> /etc/apt/sources.list && \
     apt update
 
 RUN rm /var/lib/dpkg/info/libc-bin.* && \
@@ -66,7 +67,6 @@ RUN apt install -y \
         isc-dhcp-client \
         iputils-ping \
         kmod \
-        linux-firmware \
         locales \
         net-tools \
         netplan.io \
@@ -86,7 +86,6 @@ RUN apt install -y \
         mtd-utils \
         python-is-python3 \
         git \
-        fwupd \
         network-manager
 
 RUN wget -q https://github.com/pythops/tegratop/releases/latest/download/tegratop-linux-arm64 -O /usr/local/bin/tegratop && \
@@ -112,7 +111,12 @@ RUN echo "source /opt/ros/humble/setup.bash" >> /etc/skel/.bashrc && \
     echo "source /opt/ros/humble/setup.zsh" >> /etc/skel/.zshrc
 
 # Desktop environment (lightweight, needed for NoMachine/XRDP)
-RUN apt install -y xfce4 xfce4-goodies dbus-x11
+RUN apt install -y xfce4 dbus-x11 && \
+    apt purge -y firefox* || true && \
+    apt autoremove -y
+
+# Chromium browser (ARM64 native, no official Chrome for ARM)
+RUN apt install -y chromium-browser
 
 # Terminator terminal emulator + set as default for XFCE/Thunar
 RUN apt install -y terminator && \
@@ -157,6 +161,9 @@ RUN curl -fsSL https://claude.ai/install.sh | bash
 COPY scripts/resizerootfs.sh /usr/local/bin
 COPY scripts/resizerootfs.service /lib/systemd/system
 
+# Maximize Jetson clocks at boot
+COPY config/jetson-clocks.service /lib/systemd/system
+
 # Generate locales
 RUN locale-gen en_US.UTF-8
 
@@ -170,7 +177,8 @@ COPY config/99-joypad-f710.rules /etc/udev/rules.d/99-joypad-f710.rules
 
 # Enable services at startuo
 RUN systemctl enable resizerootfs.service && \
-    systemctl enable systemd-timesyncd
+    systemctl enable systemd-timesyncd && \
+    systemctl enable jetson-clocks.service
 
 # New user
 # username: MIRU
@@ -183,7 +191,7 @@ RUN useradd \
         MIRU
 
 # F1TENTH driver stack workspace
-RUN su - MIRU -c '\
+RUN su - MIRU -s /bin/bash -c '\
     source /opt/ros/humble/setup.bash && \
     mkdir -p ~/f1tenth_ws/src && \
     cd ~/f1tenth_ws && \
@@ -224,3 +232,6 @@ RUN mkdir -p /home/MIRU/.config/xfce4 && \
 RUN echo "[Desktop]" > /home/MIRU/.dmrc && \
     echo "Session=xfce" >> /home/MIRU/.dmrc && \
     chown MIRU:MIRU /home/MIRU/.dmrc
+
+# Clean apt cache (final cleanup)
+RUN rm -rf /var/lib/apt/lists/*

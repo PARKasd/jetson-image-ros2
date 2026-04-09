@@ -14,7 +14,6 @@ fi
 case $1 in
 "20.04")
   podman build \
-    --squash-all \
     --jobs=4 \
     --arch=arm64 \
     --network=host \
@@ -24,7 +23,6 @@ case $1 in
 
 "22.04")
   podman build \
-    --squash-all \
     --jobs=4 \
     --arch=arm64 \
     --network=host \
@@ -34,7 +32,6 @@ case $1 in
 
 "24.04")
   podman build \
-    --squash-all \
     --jobs=4 \
     --arch=arm64 \
     --network=host \

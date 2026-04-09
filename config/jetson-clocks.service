@@ -1,0 +1,11 @@
+[Unit]
+Description=Maximize Jetson clocks at boot
+After=nvpmodel.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/jetson_clocks
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
