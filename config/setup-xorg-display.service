@@ -1,6 +1,6 @@
 [Unit]
 Description=Conditionally enable Xorg dummy driver based on HDMI
-Before=display-manager.service xrdp.service nxserver.service
+Before=display-manager.service nxserver.service
 DefaultDependencies=no
 After=systemd-udev-settle.service
 

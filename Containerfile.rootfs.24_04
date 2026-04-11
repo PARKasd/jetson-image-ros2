@@ -160,9 +160,7 @@ RUN wget -q https://web9001.nomachine.com/download/9.4/Arm/nomachine_9.4.14_1_ar
     rm /tmp/nomachine.deb && \
     systemctl enable nxserver
 
-# XRDP remote desktop (port 3389)
-RUN apt install -y xrdp xorgxrdp && \
-    systemctl enable xrdp
+# XRDP removed — NoMachine is the sole remote desktop
 
 # Dummy display driver (XRDP/NoMachine fallback when no HDMI connected)
 # xorg-dummy.conf lives at /etc/X11/ and is conditionally copied to
