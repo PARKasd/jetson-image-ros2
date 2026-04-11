@@ -38,7 +38,11 @@ RUN mkdir /build && \
 COPY rootfs/ /build/Linux_for_Tegra/rootfs/
 
 # Sudo permissions
-RUN chmod 4755 /build/Linux_for_Tegra/rootfs/usr/bin/sudo
+RUN chown root:root /build/Linux_for_Tegra/rootfs/usr/bin/sudo && \
+    chown root:root /build/Linux_for_Tegra/rootfs/etc/sudo.conf && \
+    chown root:root /build/Linux_for_Tegra/rootfs/etc/sudoers && \
+    chown -R root:root /build/Linux_for_Tegra/rootfs/etc/sudoers.d && \
+    chmod 4755 /build/Linux_for_Tegra/rootfs/usr/bin/sudo
 
 # Different patches
 COPY patches /patches
@@ -56,7 +60,7 @@ WORKDIR /build/Linux_for_Tegra/
 RUN ./apply_binaries.sh
 
 # Fix permissions
-RUN chroot /build/Linux_for_Tegra/rootfs/ /bin/bash -c "chown -R jetson:jetson /home/jetson && chmod 1777 /tmp"
+RUN chroot /build/Linux_for_Tegra/rootfs/ /bin/bash -c "chown -R MIRU:MIRU /home/MIRU && chmod 1777 /tmp"
 
 # L4T packages
 RUN mount -t proc proc rootfs/proc/ && \

@@ -2,12 +2,10 @@ network:
   version: 2
   renderer: NetworkManager
   ethernets:
-    eth0:
-      addresses:
-        - 192.168.0.15/24
-      routes:
-        - to: default
-          via: 192.168.0.10
+    all-eth:
+      match:
+        name: "e*"
+      dhcp4: true
       nameservers:
         addresses: [8.8.8.8, 8.8.4.4]
   wifis:

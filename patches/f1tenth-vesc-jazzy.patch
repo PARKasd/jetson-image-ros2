@@ -1,0 +1,51 @@
+diff --git a/vesc_ackermann/src/ackermann_to_vesc.cpp b/vesc_ackermann/src/ackermann_to_vesc.cpp
+index e26c4f1..6147900 100644
+--- a/vesc_ackermann/src/ackermann_to_vesc.cpp
++++ b/vesc_ackermann/src/ackermann_to_vesc.cpp
+@@ -48,10 +48,10 @@ AckermannToVesc::AckermannToVesc(const rclcpp::NodeOptions & options)
+ : Node("ackermann_to_vesc_node", options)
+ {
+   // get conversion parameters
+-  speed_to_erpm_gain_ = declare_parameter("speed_to_erpm_gain").get<double>();
+-  speed_to_erpm_offset_ = declare_parameter("speed_to_erpm_offset").get<double>();
+-  steering_to_servo_gain_ = declare_parameter("steering_angle_to_servo_gain").get<double>();
+-  steering_to_servo_offset_ = declare_parameter("steering_angle_to_servo_offset").get<double>();
++  speed_to_erpm_gain_ = declare_parameter<double>("speed_to_erpm_gain", 0.0);
++  speed_to_erpm_offset_ = declare_parameter<double>("speed_to_erpm_offset", 0.0);
++  steering_to_servo_gain_ = declare_parameter<double>("steering_angle_to_servo_gain", 0.0);
++  steering_to_servo_offset_ = declare_parameter<double>("steering_angle_to_servo_offset", 0.0);
+ 
+   // create publishers to vesc electric-RPM (speed) and servo commands
+   erpm_pub_ = create_publisher<Float64>("commands/motor/speed", 10);
+diff --git a/vesc_ackermann/src/vesc_to_odom.cpp b/vesc_ackermann/src/vesc_to_odom.cpp
+index 1deef6c..318926c 100644
+--- a/vesc_ackermann/src/vesc_to_odom.cpp
++++ b/vesc_ackermann/src/vesc_to_odom.cpp
+@@ -59,13 +59,13 @@ VescToOdom::VescToOdom(const rclcpp::NodeOptions & options)
+   declare_parameter("base_frame", base_frame_);
+   declare_parameter("use_servo_cmd_to_calc_angular_velocity", use_servo_cmd_);
+ 
+-  speed_to_erpm_gain_ = declare_parameter("speed_to_erpm_gain").get<double>();
+-  speed_to_erpm_offset_ = declare_parameter("speed_to_erpm_offset").get<double>();
++  speed_to_erpm_gain_ = declare_parameter<double>("speed_to_erpm_gain", 0.0);
++  speed_to_erpm_offset_ = declare_parameter<double>("speed_to_erpm_offset", 0.0);
+ 
+   if (use_servo_cmd_) {
+-    steering_to_servo_gain_ = declare_parameter("steering_angle_to_servo_gain").get<double>();
+-    steering_to_servo_offset_ = declare_parameter("steering_angle_to_servo_offset").get<double>();
+-    wheelbase_ = declare_parameter("wheelbase").get<double>();
++    steering_to_servo_gain_ = declare_parameter<double>("steering_angle_to_servo_gain", 0.0);
++    steering_to_servo_offset_ = declare_parameter<double>("steering_angle_to_servo_offset", 0.0);
++    wheelbase_ = declare_parameter<double>("wheelbase", 0.0);
+   }
+ 
+   declare_parameter("publish_tf", publish_tf_);
+@@ -83,7 +83,7 @@ VescToOdom::VescToOdom(const rclcpp::NodeOptions & options)
+     "sensors/core", 10, std::bind(&VescToOdom::vescStateCallback, this, _1));
+ 
+   if (use_servo_cmd_) {
+-    servo_sub_ = create_subscription<VescStateStamped>(
++    servo_sub_ = create_subscription<Float64>(
+       "sensors/servo_position_command", 10, std::bind(&VescToOdom::servoCmdCallback, this, _1));
+   }
+ }

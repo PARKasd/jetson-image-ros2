@@ -1,0 +1,13 @@
+[Unit]
+Description=Conditionally enable Xorg dummy driver based on HDMI
+Before=display-manager.service xrdp.service nxserver.service
+DefaultDependencies=no
+After=systemd-udev-settle.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/setup-xorg-display.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

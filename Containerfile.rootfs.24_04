@@ -2,13 +2,23 @@ FROM ubuntu:noble
 
 LABEL org.opencontainers.image.authors="Badr @pythops"
 
-# Jammy sources
-RUN echo "" >> /etc/apt/sources.list.d/ubuntu.sources && \
-    echo "Types: deb" >>/etc/apt/sources.list.d/ubuntu.sources && \
-    echo "URIs: http://ports.ubuntu.com/ubuntu-ports/" >> /etc/apt/sources.list.d/ubuntu.sources && \
-    echo "Suites: jammy" >> /etc/apt/sources.list.d/ubuntu.sources && \
-    echo "Components: main universe restricted multiverse" >> /etc/apt/sources.list.d/ubuntu.sources && \
-    echo "Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg" >>/etc/apt/sources.list.d/ubuntu.sources
+# Use KAIST mirror for faster apt downloads in Korea
+RUN sed -i 's|http://ports.ubuntu.com/ubuntu-ports|http://ftp.kaist.ac.kr/ubuntu-ports|g' /etc/apt/sources.list.d/ubuntu.sources && \
+    apt update
+
+# Focal + Jammy sources (for libffi7, libssl1.1, chromium-browser deb compat)
+RUN printf '%s\n' \
+        '' \
+        'Types: deb' \
+        'URIs: http://ftp.kaist.ac.kr/ubuntu-ports/' \
+        'Suites: focal jammy' \
+        'Components: main universe restricted multiverse' \
+        'Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg' \
+        >> /etc/apt/sources.list.d/ubuntu.sources && \
+    apt update
+
+# Disable dpkg path filters from minimal Ubuntu image
+RUN rm -f /etc/dpkg/dpkg.cfg.d/excludes /etc/dpkg/dpkg.cfg.d/docker-apt-speedup
 
 # Prevent interactive prompts during apt installs
 ENV DEBIAN_FRONTEND=noninteractive
@@ -41,6 +51,7 @@ RUN apt update && apt install -y \
         libffi7 \
         libvulkan1 \
         libpcre3 \
+        libssl1.1 \
         libssl-dev \
         device-tree-compiler \
         bridge-utils \
@@ -51,7 +62,8 @@ RUN apt update && apt install -y \
         busybox \
         nvme-cli \
         libseat1 \
-        efibootmgr
+        efibootmgr \
+        zstd
 
 # Additional tools
 RUN apt install -y \
@@ -68,7 +80,6 @@ RUN apt install -y \
         isc-dhcp-client \
         iputils-ping \
         kmod \
-        linux-firmware \
         locales \
         net-tools \
         netplan.io \
@@ -89,9 +100,7 @@ RUN apt install -y \
         python-is-python3 \
         git \
         gpgv1 \
-        fwupd \
         network-manager
-
 
 RUN wget -q https://github.com/pythops/tegratop/releases/latest/download/tegratop-linux-arm64 -O /usr/local/bin/tegratop && \
     chmod +x /usr/local/bin/tegratop
@@ -107,7 +116,13 @@ RUN apt install -y software-properties-common && \
     rm /tmp/ros2-apt-source.deb && \
     apt update && \
     apt install -y \
-        ros-kilted-ros-base \
+        ros-jazzy-ros-base \
+        ros-jazzy-rmw-fastrtps-cpp \
+        ros-jazzy-rosidl-typesupport-fastrtps-c \
+        ros-jazzy-rosidl-typesupport-fastrtps-cpp \
+        ros-jazzy-asio-cmake-module \
+        ros-jazzy-serial-driver \
+        ros-jazzy-io-context \
         ros-dev-tools \
         python3-argcomplete \
         python3-colcon-common-extensions \
@@ -115,11 +130,18 @@ RUN apt install -y software-properties-common && \
     rosdep init
 
 # Source ROS2 in default shell for all users
-RUN echo "source /opt/ros/kilted/setup.bash" >> /etc/skel/.bashrc && \
-    echo "source /opt/ros/kilted/setup.zsh" >> /etc/skel/.zshrc
+RUN echo "source /opt/ros/jazzy/setup.bash" >> /etc/skel/.bashrc && \
+    echo "source /opt/ros/jazzy/setup.zsh" >> /etc/skel/.zshrc
 
 # Desktop environment (lightweight, needed for NoMachine/XRDP)
-RUN apt install -y xfce4 xfce4-goodies dbus-x11
+RUN apt install -y xfce4 dbus-x11 && \
+    apt purge -y firefox* || true
+
+# Chromium browser — Noble only ships snap; use jammy deb backport
+RUN apt install -y -t jammy chromium-browser || \
+    apt install -y chromium-browser || \
+    apt install -y chromium || \
+    echo "WARNING: chromium install failed, skipping"
 
 # Terminator terminal emulator + set as default for XFCE/Thunar
 RUN apt install -y terminator && \
@@ -138,6 +160,23 @@ RUN wget -q https://web9001.nomachine.com/download/9.4/Arm/nomachine_9.4.14_1_ar
     rm /tmp/nomachine.deb && \
     systemctl enable nxserver
 
+# XRDP remote desktop (port 3389)
+RUN apt install -y xrdp xorgxrdp && \
+    systemctl enable xrdp
+
+# Dummy display driver (XRDP/NoMachine fallback when no HDMI connected)
+# xorg-dummy.conf lives at /etc/X11/ and is conditionally copied to
+# xorg.conf.d/ by setup-xorg-display.service at boot (only if no HDMI)
+RUN apt install -y xserver-xorg-video-dummy
+COPY config/xorg-dummy.conf /etc/X11/xorg-dummy.conf
+COPY scripts/setup-xorg-display.sh /usr/local/bin/setup-xorg-display.sh
+COPY config/setup-xorg-display.service /lib/systemd/system/setup-xorg-display.service
+RUN chmod +x /usr/local/bin/setup-xorg-display.sh && \
+    systemctl enable setup-xorg-display.service
+
+# Zsh + Oh My Zsh
+RUN apt install -y zsh
+
 # Antigravity (Google's VS Code with Gemini)
 RUN mkdir -p /etc/apt/keyrings && \
     curl -fsSL https://us-central1-apt.pkg.dev/doc/repo-signing-key.gpg | \
@@ -146,23 +185,14 @@ RUN mkdir -p /etc/apt/keyrings && \
     apt update && \
     apt install -y antigravity
 
-# Claude Code
-RUN curl -fsSL https://claude.ai/install.sh | bash
-
-# XRDP remote desktop (port 3389)
-RUN apt install -y xrdp xorgxrdp && \
-    systemctl enable xrdp
-
-# Dummy display (for headless remote desktop)
-RUN apt install -y xserver-xorg-video-dummy
-COPY config/xorg-dummy.conf /etc/X11/xorg.conf.d/10-dummy.conf
-
-# Zsh + Oh My Zsh
-RUN apt install -y zsh
+# Claude Code (installed per-user below)
 
 # Resize the rootfs
 COPY scripts/resizerootfs.sh /usr/local/bin
 COPY scripts/resizerootfs.service /lib/systemd/system
+
+# Maximize Jetson clocks at boot
+COPY config/jetson-clocks.service /lib/systemd/system
 
 # Generate locales
 RUN locale-gen en_US.UTF-8
@@ -177,7 +207,8 @@ COPY config/99-joypad-f710.rules /etc/udev/rules.d/99-joypad-f710.rules
 
 # Enable services at startuo
 RUN systemctl enable resizerootfs.service && \
-    systemctl enable systemd-timesyncd
+    systemctl enable systemd-timesyncd && \
+    systemctl enable jetson-clocks.service
 
 # New user
 # username: MIRU
@@ -189,20 +220,24 @@ RUN useradd \
         -s /usr/bin/zsh \
         MIRU
 
-# F1TENTH driver stack workspace
-RUN su - MIRU -s /bin/bash -c '\
-    source /opt/ros/kilted/setup.bash && \
-    mkdir -p ~/f1tenth_ws/src && \
-    cd ~/f1tenth_ws && \
-    colcon build && \
-    cd src && \
+# F1TENTH driver stack workspace - clone + apply Jazzy compat patches
+# (build will run on first boot via systemd service, avoiding QEMU issues)
+COPY patches/f1tenth-vesc-jazzy.patch /tmp/f1tenth-vesc-jazzy.patch
+RUN mkdir -p /home/MIRU/f1tenth_ws/src && \
+    cd /home/MIRU/f1tenth_ws/src && \
     git clone https://github.com/f1tenth/f1tenth_system.git && \
     cd f1tenth_system && \
     git submodule update --init --force --remote && \
-    cd ~/f1tenth_ws && \
-    rosdep update && \
-    rosdep install --from-paths src -i -y && \
-    colcon build'
+    cd vesc && \
+    patch -p1 < /tmp/f1tenth-vesc-jazzy.patch && \
+    rm /tmp/f1tenth-vesc-jazzy.patch && \
+    chown -R MIRU:MIRU /home/MIRU/f1tenth_ws
+
+# First-boot build script for F1TENTH workspace
+COPY scripts/f1tenth-first-boot.sh /usr/local/bin/f1tenth-first-boot.sh
+COPY config/f1tenth-first-boot.service /lib/systemd/system/f1tenth-first-boot.service
+RUN chmod +x /usr/local/bin/f1tenth-first-boot.sh && \
+    systemctl enable f1tenth-first-boot.service
 
 # Add /usr/local/cuda/bin to the PATH
 RUN echo "if [ -d \"/usr/local/cuda/bin\" ] ; then" >> /home/MIRU/.profile  && \
@@ -210,15 +245,20 @@ RUN echo "if [ -d \"/usr/local/cuda/bin\" ] ; then" >> /home/MIRU/.profile  && \
     echo "fi" >> /home/MIRU/.profile
 
 # Source ROS2 Kilted and F1TENTH workspace for MIRU user
-RUN echo "source /opt/ros/kilted/setup.bash" >> /home/MIRU/.bashrc && \
+RUN echo 'export PATH="$HOME/.local/bin:$PATH"' >> /home/MIRU/.bashrc && \
+    echo "source /opt/ros/jazzy/setup.bash" >> /home/MIRU/.bashrc && \
     echo "source ~/f1tenth_ws/install/setup.bash 2>/dev/null" >> /home/MIRU/.bashrc
+
+# Install Claude Code as MIRU user
+RUN su - MIRU -c 'curl -fsSL https://claude.ai/install.sh | bash'
 
 # Install Oh My Zsh + plugins for MIRU user
 RUN su - MIRU -c 'sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended' && \
     git clone https://github.com/zsh-users/zsh-syntax-highlighting.git /home/MIRU/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting && \
     git clone https://github.com/zsh-users/zsh-autosuggestions.git /home/MIRU/.oh-my-zsh/custom/plugins/zsh-autosuggestions && \
     sed -i 's/plugins=(git)/plugins=(git zsh-syntax-highlighting zsh-autosuggestions)/' /home/MIRU/.zshrc && \
-    echo "source /opt/ros/kilted/setup.zsh" >> /home/MIRU/.zshrc && \
+    echo 'export PATH="$HOME/.local/bin:$PATH"' >> /home/MIRU/.zshrc && \
+    echo "source /opt/ros/jazzy/setup.zsh" >> /home/MIRU/.zshrc && \
     echo "source ~/f1tenth_ws/install/setup.zsh 2>/dev/null" >> /home/MIRU/.zshrc && \
     chown -R MIRU:MIRU /home/MIRU/.oh-my-zsh /home/MIRU/.zshrc
 
@@ -231,3 +271,6 @@ RUN mkdir -p /home/MIRU/.config/xfce4 && \
 RUN echo "[Desktop]" > /home/MIRU/.dmrc && \
     echo "Session=xfce" >> /home/MIRU/.dmrc && \
     chown MIRU:MIRU /home/MIRU/.dmrc
+
+# Clean apt cache (final cleanup)
+RUN rm -rf /var/lib/apt/lists/*

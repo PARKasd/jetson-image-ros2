@@ -44,16 +44,17 @@ case $1 in
   ;;
 esac
 
+sudo rm -rf base rootfs
 podman save --format docker-dir -o base jetson-rootfs
 
-mkdir rootfs
+sudo mkdir rootfs
 
-for layer in "$(jq -r '.layers[].digest' base/manifest.json | awk -F ':' '{print $2}')"; do
-  tar xvf base/"$layer" --directory=rootfs
+for layer in $(jq -r '.layers[].digest' base/manifest.json | awk -F ':' '{print $2}'); do
+  sudo tar xpf base/"$layer" --numeric-owner --directory=rootfs
 done
 
-rm -rf rootfs/root/.bash_history
+sudo rm -rf rootfs/root/.bash_history
 
-rm -rf base
+sudo rm -rf base
 
 echo "Rootfs created in rootfs directory"

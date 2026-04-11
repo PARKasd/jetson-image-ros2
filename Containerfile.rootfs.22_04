@@ -10,7 +10,10 @@ RUN sed -i 's|http://ports.ubuntu.com/ubuntu-ports|http://ftp.kaist.ac.kr/ubuntu
 RUN rm /var/lib/dpkg/info/libc-bin.* && \
     apt-get clean && \
     apt-get update && \
-    apt-get install libc-bin
+    apt-get install -y --reinstall libc-bin
+
+# Disable dpkg path filters from minimal Ubuntu image (they may exclude /opt files)
+RUN rm -f /etc/dpkg/dpkg.cfg.d/excludes /etc/dpkg/dpkg.cfg.d/docker-apt-speedup
 
 # Prevent interactive prompts during apt installs
 ENV DEBIAN_FRONTEND=noninteractive
@@ -86,7 +89,11 @@ RUN apt install -y \
         mtd-utils \
         python-is-python3 \
         git \
-        network-manager
+        network-manager \
+        efibootmgr \
+        nvme-cli \
+        libseat1 \
+        zstd
 
 RUN wget -q https://github.com/pythops/tegratop/releases/latest/download/tegratop-linux-arm64 -O /usr/local/bin/tegratop && \
     chmod +x /usr/local/bin/tegratop
@@ -100,6 +107,12 @@ RUN apt install -y software-properties-common && \
     apt update && \
     apt install -y \
         ros-humble-ros-base \
+        ros-humble-rmw-fastrtps-cpp \
+        ros-humble-rosidl-typesupport-fastrtps-c \
+        ros-humble-rosidl-typesupport-fastrtps-cpp \
+        ros-humble-asio-cmake-module \
+        ros-humble-serial-driver \
+        ros-humble-io-context \
         ros-dev-tools \
         python3-argcomplete \
         python3-colcon-common-extensions \
@@ -112,8 +125,7 @@ RUN echo "source /opt/ros/humble/setup.bash" >> /etc/skel/.bashrc && \
 
 # Desktop environment (lightweight, needed for NoMachine/XRDP)
 RUN apt install -y xfce4 dbus-x11 && \
-    apt purge -y firefox* || true && \
-    apt autoremove -y
+    apt purge -y firefox* || true
 
 # Chromium browser (ARM64 native, no official Chrome for ARM)
 RUN apt install -y chromium-browser
@@ -139,9 +151,15 @@ RUN wget -q https://web9001.nomachine.com/download/9.4/Arm/nomachine_9.4.14_1_ar
 RUN apt install -y xrdp xorgxrdp && \
     systemctl enable xrdp
 
-# Dummy display (for headless remote desktop)
+# Dummy display driver (XRDP/NoMachine fallback when no HDMI connected)
+# xorg-dummy.conf lives at /etc/X11/ and is conditionally copied to
+# xorg.conf.d/ by setup-xorg-display.service at boot (only if no HDMI)
 RUN apt install -y xserver-xorg-video-dummy
-COPY config/xorg-dummy.conf /etc/X11/xorg.conf.d/10-dummy.conf
+COPY config/xorg-dummy.conf /etc/X11/xorg-dummy.conf
+COPY scripts/setup-xorg-display.sh /usr/local/bin/setup-xorg-display.sh
+COPY config/setup-xorg-display.service /lib/systemd/system/setup-xorg-display.service
+RUN chmod +x /usr/local/bin/setup-xorg-display.sh && \
+    systemctl enable setup-xorg-display.service
 
 # Zsh + Oh My Zsh
 RUN apt install -y zsh
@@ -154,8 +172,7 @@ RUN mkdir -p /etc/apt/keyrings && \
     apt update && \
     apt install -y antigravity
 
-# Claude Code
-RUN curl -fsSL https://claude.ai/install.sh | bash
+# Claude Code (installed per-user below)
 
 # Resize the rootfs
 COPY scripts/resizerootfs.sh /usr/local/bin
@@ -190,20 +207,20 @@ RUN useradd \
         -s /usr/bin/zsh \
         MIRU
 
-# F1TENTH driver stack workspace
-RUN su - MIRU -s /bin/bash -c '\
-    source /opt/ros/humble/setup.bash && \
-    mkdir -p ~/f1tenth_ws/src && \
-    cd ~/f1tenth_ws && \
-    colcon build && \
-    cd src && \
+# F1TENTH driver stack workspace - clone only
+# (build will run on first boot via systemd service, avoiding QEMU issues)
+RUN mkdir -p /home/MIRU/f1tenth_ws/src && \
+    cd /home/MIRU/f1tenth_ws/src && \
     git clone https://github.com/f1tenth/f1tenth_system.git && \
     cd f1tenth_system && \
     git submodule update --init --force --remote && \
-    cd ~/f1tenth_ws && \
-    rosdep update && \
-    rosdep install --from-paths src -i -y && \
-    colcon build'
+    chown -R MIRU:MIRU /home/MIRU/f1tenth_ws
+
+# First-boot build script for F1TENTH workspace
+COPY scripts/f1tenth-first-boot.sh /usr/local/bin/f1tenth-first-boot.sh
+COPY config/f1tenth-first-boot.service /lib/systemd/system/f1tenth-first-boot.service
+RUN chmod +x /usr/local/bin/f1tenth-first-boot.sh && \
+    systemctl enable f1tenth-first-boot.service
 
 # Add /usr/local/cuda/bin to the PATH
 RUN echo "if [ -d \"/usr/local/cuda/bin\" ] ; then" >> /home/MIRU/.profile  && \
@@ -211,14 +228,19 @@ RUN echo "if [ -d \"/usr/local/cuda/bin\" ] ; then" >> /home/MIRU/.profile  && \
     echo "fi" >> /home/MIRU/.profile
 
 # Source ROS2 Humble and F1TENTH workspace for MIRU user
-RUN echo "source /opt/ros/humble/setup.bash" >> /home/MIRU/.bashrc && \
+RUN echo 'export PATH="$HOME/.local/bin:$PATH"' >> /home/MIRU/.bashrc && \
+    echo "source /opt/ros/humble/setup.bash" >> /home/MIRU/.bashrc && \
     echo "source ~/f1tenth_ws/install/setup.bash 2>/dev/null" >> /home/MIRU/.bashrc
+
+# Install Claude Code as MIRU user
+RUN su - MIRU -c 'curl -fsSL https://claude.ai/install.sh | bash'
 
 # Install Oh My Zsh + plugins for MIRU user
 RUN su - MIRU -c 'sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended' && \
     git clone https://github.com/zsh-users/zsh-syntax-highlighting.git /home/MIRU/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting && \
     git clone https://github.com/zsh-users/zsh-autosuggestions.git /home/MIRU/.oh-my-zsh/custom/plugins/zsh-autosuggestions && \
     sed -i 's/plugins=(git)/plugins=(git zsh-syntax-highlighting zsh-autosuggestions)/' /home/MIRU/.zshrc && \
+    echo 'export PATH="$HOME/.local/bin:$PATH"' >> /home/MIRU/.zshrc && \
     echo "source /opt/ros/humble/setup.zsh" >> /home/MIRU/.zshrc && \
     echo "source ~/f1tenth_ws/install/setup.zsh 2>/dev/null" >> /home/MIRU/.zshrc && \
     chown -R MIRU:MIRU /home/MIRU/.oh-my-zsh /home/MIRU/.zshrc

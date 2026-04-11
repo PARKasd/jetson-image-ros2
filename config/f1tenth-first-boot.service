@@ -1,0 +1,15 @@
+[Unit]
+Description=F1TENTH workspace first-boot setup
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=!/var/lib/f1tenth-first-boot.done
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/f1tenth-first-boot.sh
+RemainAfterExit=yes
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
