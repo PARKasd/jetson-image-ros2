@@ -211,7 +211,7 @@ RUN mkdir -p /home/MIRU/f1tenth_ws/src && \
     cd /home/MIRU/f1tenth_ws/src && \
     git clone https://github.com/f1tenth/f1tenth_system.git && \
     cd f1tenth_system && \
-    git submodule update --init --force --remote && \
+    git submodule update --init --force && \
     chown -R MIRU:MIRU /home/MIRU/f1tenth_ws
 
 # First-boot build script for F1TENTH workspace

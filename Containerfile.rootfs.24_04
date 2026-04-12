@@ -225,7 +225,7 @@ RUN mkdir -p /home/MIRU/f1tenth_ws/src && \
     cd /home/MIRU/f1tenth_ws/src && \
     git clone https://github.com/f1tenth/f1tenth_system.git && \
     cd f1tenth_system && \
-    git submodule update --init --force --remote && \
+    git submodule update --init --force && \
     cd vesc && \
     patch -p1 < /tmp/f1tenth-vesc-jazzy.patch && \
     rm /tmp/f1tenth-vesc-jazzy.patch && \
